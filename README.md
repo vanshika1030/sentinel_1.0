@@ -225,6 +225,3 @@ make clean
 
 ---
 
-## License
-
-MIT
