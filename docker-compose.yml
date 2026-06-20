@@ -1,0 +1,137 @@
+version: "3.9"
+
+services:
+  # ── Infrastructure ──────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sentinel-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sentinel-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  qdrant-0:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_0_data:/qdrant/storage
+    networks:
+      - sentinel-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  qdrant-1:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6334:6333"
+    volumes:
+      - qdrant_1_data:/qdrant/storage
+    networks:
+      - sentinel-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Application ─────────────────────────────────────────────────
+
+  sentinel-api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_URL: postgresql+asyncpg://sentinel:sentinel@postgres:5432/sentinel
+      POSTGRES_SYNC_URL: postgresql://sentinel:sentinel@postgres:5432/sentinel
+      QDRANT_URLS: '["http://qdrant-0:6333","http://qdrant-1:6333"]'
+      COMPETITORS_FILE: /app/competitors.yaml
+    volumes:
+      - ./competitors.yaml:/app/competitors.yaml
+    networks:
+      - sentinel-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      qdrant-0:
+        condition: service_healthy
+      qdrant-1:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      uvicorn sentinel.api.app:app --host 0.0.0.0 --port 8000
+
+  sentinel-worker:
+    build: .
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_URL: postgresql+asyncpg://sentinel:sentinel@postgres:5432/sentinel
+      POSTGRES_SYNC_URL: postgresql://sentinel:sentinel@postgres:5432/sentinel
+      QDRANT_URLS: '["http://qdrant-0:6333","http://qdrant-1:6333"]'
+      COMPETITORS_FILE: /app/competitors.yaml
+      WORKER_COUNT: "2"
+    volumes:
+      - ./competitors.yaml:/app/competitors.yaml
+    networks:
+      - sentinel-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      qdrant-0:
+        condition: service_healthy
+      qdrant-1:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      python -m sentinel.ingestion
+
+volumes:
+  redis_data:
+  postgres_data:
+  qdrant_0_data:
+  qdrant_1_data:
+
+networks:
+  sentinel-net:
+    driver: bridge

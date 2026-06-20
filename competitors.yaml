@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────
+# Sentinel — Competitors Configuration
+# Add competitor URLs to monitor for changes
+# ─────────────────────────────────────────────────────────────
+
+competitors:
+  - name: vercel
+    urls:
+      - url: https://vercel.com/blog
+        source_type: website
+      - url: https://vercel.com/changelog
+        source_type: website
+      - url: https://vercel.com/docs
+        source_type: website
+      - url: https://github.com/vercel/next.js
+        source_type: github
+      - url: https://vercel.com/atom
+        source_type: rss
+
+  - name: supabase
+    urls:
+      - url: https://supabase.com/blog
+        source_type: website
+      - url: https://supabase.com/changelog
+        source_type: website
+      - url: https://supabase.com/docs
+        source_type: website
+      - url: https://github.com/supabase/supabase
+        source_type: github
+      - url: https://supabase.com/blog/rss.xml
+        source_type: rss
