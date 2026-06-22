@@ -34,69 +34,101 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _app_state
     logger.info("Sentinel starting up...")
 
+    redis_client = None
     try:
-        # Initialize Redis
-        redis_client = aioredis.from_url(
-            settings.redis_url, decode_responses=True
-        )
-        _app_state["redis"] = redis_client
+        # Initialize Redis (optional for local dev)
+        try:
+            redis_client = aioredis.from_url(
+                settings.redis_url, decode_responses=True
+            )
+            await redis_client.ping()
+            _app_state["redis"] = redis_client
+            logger.info("Redis connected")
+        except Exception as e:
+            logger.warning(f"Redis unavailable (optional): {e}")
 
         # Initialize database
         from sentinel.models.database import get_engine, init_db
         await init_db()
         _app_state["db_engine"] = get_engine()
+        logger.info("Database initialized")
 
-        # Initialize shard manager
-        from sentinel.sharding.shard_manager import ShardManager
-        shard_manager = ShardManager()
-        await shard_manager.ensure_collection()
-        _app_state["shard_manager"] = shard_manager
+        # Initialize shard manager (optional for local dev)
+        try:
+            from sentinel.sharding.shard_manager import ShardManager
+            shard_manager = ShardManager()
+            await shard_manager.ensure_collection()
+            _app_state["shard_manager"] = shard_manager
+            logger.info("Shard manager initialized")
+        except Exception as e:
+            logger.warning(f"Shard manager unavailable (optional): {e}")
+            shard_manager = None
 
-        # Initialize core components
-        from sentinel.core.embedder import OpenAIEmbedder
-        from sentinel.core.generator import RAGGenerator
-        from sentinel.core.retriever import HybridRetriever
-        from sentinel.sharding.scatter_gather import ScatterGather
-        from sentinel.sharding.shard_router import ShardRouter
+        # Initialize core components (optional if dependencies unavailable)
+        try:
+            from sentinel.core.embedder import OpenAIEmbedder
+            from sentinel.core.generator import RAGGenerator
+            from sentinel.core.retriever import HybridRetriever
+            from sentinel.sharding.scatter_gather import ScatterGather
+            from sentinel.sharding.shard_router import ShardRouter
 
-        _app_state["embedder"] = OpenAIEmbedder()
-        _app_state["retriever"] = HybridRetriever()
-        _app_state["generator"] = RAGGenerator()
-        _app_state["scatter_gather"] = ScatterGather(shard_manager)
-        _app_state["shard_router"] = ShardRouter(shard_manager)
+            _app_state["embedder"] = OpenAIEmbedder()
+            _app_state["retriever"] = HybridRetriever()
+            _app_state["generator"] = RAGGenerator()
+            if shard_manager:
+                _app_state["scatter_gather"] = ScatterGather(shard_manager)
+                _app_state["shard_router"] = ShardRouter(shard_manager)
+            logger.info("Core components initialized")
+        except Exception as e:
+            logger.warning(f"Core components partially unavailable: {e}")
 
-        # Initialize temporal components
-        from sentinel.temporal.snapshot_store import SnapshotStore
-        from sentinel.temporal.timeline import TimelineStore
+        # Initialize temporal components (optional)
+        try:
+            from sentinel.temporal.snapshot_store import SnapshotStore
+            from sentinel.temporal.timeline import TimelineStore
 
-        _app_state["snapshot_store"] = SnapshotStore()
-        _app_state["timeline_store"] = TimelineStore()
+            _app_state["snapshot_store"] = SnapshotStore()
+            _app_state["timeline_store"] = TimelineStore()
+            logger.info("Temporal components initialized")
+        except Exception as e:
+            logger.warning(f"Temporal components unavailable: {e}")
 
-        # Initialize ingestion components
-        from sentinel.ingestion.producer import JobProducer
-        from sentinel.ingestion.scheduler import CrawlScheduler
+        # Initialize ingestion components (optional if Redis unavailable)
+        if redis_client:
+            try:
+                from sentinel.ingestion.producer import JobProducer
+                from sentinel.ingestion.scheduler import CrawlScheduler
 
-        producer = JobProducer(redis_client)
-        _app_state["producer"] = producer
-        _app_state["scheduler"] = CrawlScheduler(producer)
+                producer = JobProducer(redis_client)
+                _app_state["producer"] = producer
+                _app_state["scheduler"] = CrawlScheduler(producer)
+                logger.info("Ingestion components initialized")
+            except Exception as e:
+                logger.warning(f"Ingestion components unavailable: {e}")
 
-        # Initialize health checker
-        from sentinel.resilience.health import HealthChecker
-        _app_state["health_checker"] = HealthChecker(
-            redis_client=redis_client,
-            shard_manager=shard_manager,
-            db_engine=get_engine(),
-        )
+        # Initialize health checker (optional)
+        try:
+            from sentinel.resilience.health import HealthChecker
+            _app_state["health_checker"] = HealthChecker(
+                redis_client=redis_client,
+                shard_manager=shard_manager if shard_manager else None,
+                db_engine=get_engine(),
+            )
+        except Exception as e:
+            logger.warning(f"Health checker unavailable: {e}")
 
-        logger.info("Sentinel startup complete")
+        logger.info("Sentinel startup complete (some optional services may be unavailable)")
         yield
 
     finally:
         logger.info("Sentinel shutting down...")
 
         # Cleanup Redis
-        if "redis" in _app_state:
-            await _app_state["redis"].close()
+        if redis_client:
+            try:
+                await redis_client.close()
+            except Exception as e:
+                logger.warning(f"Error closing Redis: {e}")
 
         # Cleanup database
         from sentinel.models.database import close_db
