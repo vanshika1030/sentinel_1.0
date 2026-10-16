@@ -6,8 +6,9 @@ via Reciprocal Rank Fusion, and re-ranks with a cross-encoder model.
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from rank_bm25 import BM25Okapi
@@ -43,7 +44,7 @@ class HybridRetriever:
         top_k: int | None = None,
         reranker_top_k: int | None = None,
         reranker_model: str | None = None,
-        rrf_k: int = 60,
+        rrf_k: int | None = None,
     ) -> None:
         """Initialize the hybrid retriever.
 
@@ -55,7 +56,7 @@ class HybridRetriever:
         """
         self._top_k = top_k or settings.retriever_top_k
         self._reranker_top_k = reranker_top_k or settings.reranker_top_k
-        self._rrf_k = rrf_k
+        self._rrf_k = rrf_k if rrf_k is not None else settings.rrf_k
         self._reranker_model_name = reranker_model or settings.reranker_model
         self._cross_encoder: CrossEncoder | None = None
 
@@ -94,8 +95,7 @@ class HybridRetriever:
         result = []
         for doc_id in sorted_ids:
             doc = doc_map[doc_id]
-            doc.score = scores[doc_id]
-            result.append(doc)
+            result.append(replace(doc, score=scores[doc_id]))
         return result
 
     def bm25_search(
@@ -128,8 +128,7 @@ class HybridRetriever:
 
         results = []
         for doc, score in scored_docs[:top_k]:
-            doc.score = float(score)
-            results.append(doc)
+            results.append(replace(doc, score=float(score)))
         return results
 
     def rerank(
@@ -161,8 +160,7 @@ class HybridRetriever:
 
         results = []
         for doc, score in scored_docs[:top_k]:
-            doc.score = float(score)
-            results.append(doc)
+            results.append(replace(doc, score=float(score)))
         return results
 
     async def retrieve(
@@ -191,7 +189,7 @@ class HybridRetriever:
         )
 
         # Cross-encoder re-ranking
-        reranked = self.rerank(query, fused, self._reranker_top_k)
+        reranked = await asyncio.to_thread(self.rerank, query, fused, self._reranker_top_k)
         logger.info(
             "Hybrid retrieval: %d vector + %d BM25 → %d fused → %d reranked",
             len(vector_results),

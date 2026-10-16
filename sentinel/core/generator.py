@@ -62,7 +62,7 @@ class RAGGenerator:
             max_tokens: Maximum response tokens. Defaults to config.
         """
         self._model = model or settings.llm_model
-        self._api_key = api_key or settings.openai_api_key
+        self._api_key = api_key or settings.openai_api_key or None
         self._temperature = temperature if temperature is not None else settings.llm_temperature
         self._max_tokens = max_tokens or settings.llm_max_tokens
 

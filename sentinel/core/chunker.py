@@ -31,21 +31,24 @@ class ChunkerFactory:
             chunk_overlap: Overlap between consecutive chunks. Defaults to config value.
             separators: Custom separator hierarchy. Defaults to LangChain's built-in.
         """
-        self._chunk_size = chunk_size or settings.chunk_size
-        self._chunk_overlap = chunk_overlap or settings.chunk_overlap
+        self._chunk_size = chunk_size if chunk_size is not None else settings.chunk_size
+        self._chunk_overlap = chunk_overlap if chunk_overlap is not None else settings.chunk_overlap
         self._separators = separators
+        self._splitter: RecursiveCharacterTextSplitter | None = None
 
     def create_splitter(self) -> RecursiveCharacterTextSplitter:
         """Create and return a configured text splitter instance."""
-        kwargs: dict = {
-            "chunk_size": self._chunk_size,
-            "chunk_overlap": self._chunk_overlap,
-            "length_function": len,
-            "is_separator_regex": False,
-        }
-        if self._separators:
-            kwargs["separators"] = self._separators
-        return RecursiveCharacterTextSplitter(**kwargs)
+        if self._splitter is None:
+            kwargs: dict = {
+                "chunk_size": self._chunk_size,
+                "chunk_overlap": self._chunk_overlap,
+                "length_function": len,
+                "is_separator_regex": False,
+            }
+            if self._separators:
+                kwargs["separators"] = self._separators
+            self._splitter = RecursiveCharacterTextSplitter(**kwargs)
+        return self._splitter
 
     def split_text(self, text: str) -> list[str]:
         """Split text into chunks.

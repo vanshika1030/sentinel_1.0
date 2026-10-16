@@ -21,7 +21,7 @@ class TestChangeScorer:
         """Tiny changes with no keywords should score low."""
         result = scorer.score(
             diff_ratio=0.02,  # Very small change
-            diff_text="- old timestamp\n+ new timestamp",
+            diff_text="- old timestamp\n+ current timestamp",
             semantic_similarity=0.98,  # Very similar semantically
         )
         assert result.score < 0.5
@@ -127,4 +127,5 @@ class TestChangeScorer:
 
         # Same score, but different significance
         assert strict_result.score == lenient_result.score
-        assert not strict_result.is_significant or lenient_result.is_significant
+        assert not strict_result.is_significant, "Strict threshold (0.9) should reject this score"
+        assert lenient_result.is_significant, "Lenient threshold (0.1) should accept this score"

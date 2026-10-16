@@ -8,14 +8,10 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import TYPE_CHECKING
 
 from langchain_openai import OpenAIEmbeddings
 
 from sentinel.core.config import settings
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -74,10 +70,11 @@ class OpenAIEmbedder(BaseEmbedder):
             batch_size: Max texts per batch API call. Defaults to config.
         """
         self._model = model or settings.embedding_model
-        self._api_key = api_key or settings.openai_api_key
+        self._api_key = api_key or settings.openai_api_key or None
         self._batch_size = batch_size or settings.embedding_batch_size
         self._embeddings = OpenAIEmbeddings(
             model=self._model,
+            dimensions=settings.embedding_dimensions,
             openai_api_key=self._api_key,
         )
 

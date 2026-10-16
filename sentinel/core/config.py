@@ -7,6 +7,9 @@ chunk sizes, infrastructure URLs, shard count, and more.
 
 from __future__ import annotations
 
+from typing import Any
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -72,6 +75,7 @@ class Settings(BaseSettings):
     retriever_top_k: int = 20
     reranker_top_k: int = 5
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rrf_k: int = 60
 
     # ── Change Detection ─────────────────────────────────────────────
     significance_threshold: float = 0.5
@@ -99,6 +103,22 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     cors_origins: list[str] = ["*"]
+
+    @field_validator("qdrant_urls", "keyword_triggers", "cors_origins", mode="before")
+    @classmethod
+    def parse_comma_separated(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            # Try JSON first
+            import json
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+            # Fall back to comma-separated
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
 
 
 settings = Settings()

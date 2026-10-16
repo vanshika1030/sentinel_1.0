@@ -134,8 +134,18 @@ class TestCircuitBreaker:
         assert breaker.state == CircuitState.OPEN
 
     @pytest.mark.asyncio
-    async def test_success_resets_failure_count(self, breaker: CircuitBreaker) -> None:
+    async def test_success_resets_failure_count(self) -> None:
         """A success should reset the consecutive failure counter."""
+        # Use a dedicated breaker with high failure_rate so only consecutive
+        # threshold matters (not the sliding window rate).
+        b = CircuitBreaker(
+            name="test_reset",
+            failure_threshold=3,
+            failure_rate=0.99,
+            window_seconds=5.0,
+            recovery_timeout=0.5,
+        )
+
         async def failing():
             raise ConnectionError("oops")
 
@@ -145,17 +155,17 @@ class TestCircuitBreaker:
         # 2 failures (under threshold of 3)
         for _ in range(2):
             with pytest.raises(ConnectionError):
-                await breaker.call(failing)
+                await b.call(failing)
 
         # Success resets counter
-        await breaker.call(success)
+        await b.call(success)
 
         # 2 more failures should not open (counter reset)
         for _ in range(2):
             with pytest.raises(ConnectionError):
-                await breaker.call(failing)
+                await b.call(failing)
 
-        assert breaker.state == CircuitState.CLOSED
+        assert b.state == CircuitState.CLOSED
 
     def test_manual_reset(self, breaker: CircuitBreaker) -> None:
         """Manual reset should force circuit to CLOSED."""

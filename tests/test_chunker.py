@@ -52,7 +52,8 @@ class TestChunkerFactory:
                 words_current = set(chunks[i].split()[-5:])
                 words_next = set(chunks[i + 1].split()[:5])
                 # At least some overlap should exist
-                # (exact overlap depends on where the split happens)
+                overlap = words_current & words_next
+                assert len(overlap) > 0, f"No overlap found between chunk {i} and chunk {i+1}"
 
     def test_custom_chunk_size(self) -> None:
         """Custom chunk_size should be respected."""
